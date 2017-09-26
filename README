@@ -1,0 +1,8 @@
+fmanip - A simple file manipulator!
+
+Fmanip can be used to either
+dump all its contents or to modify user-specified
+bytes in its content. It can also be used to get
+byte-values at specific positions.
+
+Developed by Santiago Pagola, autumn 2017.
