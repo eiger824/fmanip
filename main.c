@@ -99,7 +99,7 @@ int set_byte_value(const char* fname, int pos, u8_t val)
       if (debug)
          printf("(File contains %lu bytes)\n", size);
       rewind (fp);
-      
+
       if (pos > size)
       {
          fprintf(stderr,
@@ -107,7 +107,7 @@ int set_byte_value(const char* fname, int pos, u8_t val)
          return -1;
       }
       fseek(fp, pos, SEEK_SET);
-      
+
       int r;
       if ((r = fwrite(&val, 1, 1, fp)) > 0)
       {
@@ -132,39 +132,47 @@ int set_byte_value(const char* fname, int pos, u8_t val)
 int dump(const char* fname, int mark)
 {
    int width = get_win_width();
+   if (width > 100) width = 100;
    FILE *fp = fopen(fname, "rb");
    long size;
-   int i;
+   int i, start = 0, end = 0;
    u8_t *buffer;
    if (fp != NULL)
    {
       fseek(fp, 0, SEEK_END);
       size = ftell(fp);
       rewind(fp);
-      if (debug)
-         printf("(File contains %lu bytes)\n", size);
       buffer = (u8_t*)malloc(sizeof(u8_t) * size);
       size_t result = fread(buffer, 1, size, fp);
       if (size == result)
       {
          for (i=0; i<size; ++i)
          {
-            if (i > 0 && i % (width/3) == 0) 
+            if (i > 0 && i % (width/3 - 7) == 0)
             {
-               printf("\n");
+               end = i;
+               printf(" (bytes %d - %d)\n", start, end);
+               start = end+1;
             }
             printf("%s%s%x%s "
                    ,(i==mark)?MARK:""
                    ,(buffer[i]<16)?"0":""
                    ,buffer[i]
                    ,(i==mark)?NORM:"");
-            
+
          }
-         printf("\n");
+         if (i % (width/3-7) != 0)
+         {
+            for (unsigned k=(i%(width/3-7))*3; k<width - 3*7-1; k++)
+               printf(" ");
+            printf(" (bytes %d - %lu)\n", start, size);
+         }
+         else
+            printf("\n");
       }
       else
       {
-         fprintf(stderr, "Expected and obtained sizes don't match(%d != %d)\n"
+         fprintf(stderr, "Expected and obtained sizes don't match(%lu != %lu)\n"
                  , size, result);
          return -1;
       }
@@ -178,7 +186,7 @@ int dump(const char* fname, int mark)
 int main(int argc, char* argv[])
 {
    char *file = (char*)malloc(200);
-   char *buffer, *arg;
+   char *arg;
    int c, bn = -1, pos=-1, val=-1;
 
    while ((c = getopt(argc, argv, "df:g:s:hv")) != -1)
@@ -196,7 +204,7 @@ int main(int argc, char* argv[])
             {
                fprintf(stderr, "You either set or get stuff. Don't do both\n");
                help();
-               return -1; 
+               return -1;
             }
             bn = atoi(optarg);
             if (bn < 0)
@@ -266,14 +274,15 @@ int main(int argc, char* argv[])
       memcpy(file, "testfile.txt", 13);
       file[12] = '\0';
    }
-   
+
    if (debug)
       printf("Attempting to read from \"%s\"\n", file);
 
    if (bn >= 0)
    {
       dump(file, bn);
-      printf("The byte value at position %d is: %x\n", bn, get_byte_value(file, bn));
+	  if (debug)
+			printf("The byte value at position %d is: %x\n", bn, get_byte_value(file, bn));
       return 0;
    }
    else if (pos >= 0)
@@ -281,7 +290,6 @@ int main(int argc, char* argv[])
       if (set_byte_value(file, pos, val) == 0)
       {
          dump(file, pos);
-         printf("Success!\n");
          return 0;
       }
       else
@@ -295,7 +303,7 @@ int main(int argc, char* argv[])
       //Otherwise just dump file
       dump(file, -1);
    }
-   
+
 
    return 0;
 }
