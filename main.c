@@ -12,6 +12,169 @@ typedef unsigned char u8_t;
 
 int debug = 0;
 
+void print(char *p, char *line)
+{
+   if (line == NULL)
+   {
+      printf("Text (length=%zu)\n---------------\n", strlen(p));
+      printf("%s\n---------------\n", p);
+   }
+   else
+   {
+      char *substr = (char*) malloc((sizeof *substr) * 1000);
+      memcpy(substr, line, strlen(line));
+      substr[strlen(line) - 1] = '\0';
+      
+      char *s = strstr(p, substr);
+      if (s != NULL)
+      {
+         int where = s - p;
+         printf("New text, length:%zu (%zu + %zu)\n",
+                strlen(p), strlen(p) - strlen(line), strlen(line));
+         printf("------------------------------\n");
+         for (unsigned i=0; i<strlen(p); ++i)
+         {
+            if (i == where) printf("%s", MARK);
+            if (i == where + strlen(line)) printf("%s", NORM);
+            printf("%c", p[i]);
+         }
+         //ensure to get back to normal color
+         printf("%s", NORM);
+         printf("\n------------------------------\n");
+      }
+      else
+      {
+         printf("New text, length=%zu (%zu + %zu)\n",
+                strlen(p), strlen(p) - strlen(line), strlen(line));
+         printf("------------------------------\n%s\n", p);
+         printf("------------------------------\n");
+      }
+
+      free(substr);
+   }
+}
+
+char* insert(char *p, char *line)
+{
+   char *buffer = p;
+   size_t init_len = strlen(p);
+   unsigned eol_cnt = 1;
+   int i, eols, index = -2;
+   char *q = NULL, *s = NULL;
+   unsigned offset;
+   
+   // find number of lines
+   for (eols = 1; buffer[eols]; buffer[eols] == '\n' ? ++eols : *buffer++);
+   buffer = p;
+   // ask position to insert
+   do
+   {
+      if (index != -2)
+      {
+         fprintf(stderr, "Wrong index '%d'\n", index);
+      }
+      printf("Provide a line where your sentence should be inserted\n");
+      printf("(Accepted values between %d and %d, -1 to append): ", 1, eols + 1);
+      scanf("%d", &index);
+   }
+   while ((index != -1 && index < 0) || index > eols+1);
+
+   // copy the input buffer to q
+   q = (char*) malloc ((sizeof *q) * 1000000);
+   memcpy(q, buffer, init_len + 1);
+   q[init_len] = '\0';
+     
+   // special cases, just prepend/append
+   if (index == 1)
+   {
+      // preprend to existing buffer
+      memmove (q + strlen(line), q, init_len + 1); // +1 accounts for the \0
+      memcpy (q, line, strlen(line));
+      // and realloc with the last size
+      s = (char*) realloc ((char *) q, strlen(line) + init_len + 1);
+      if (s)
+      {
+         s[strlen(line) + init_len] = '\0';
+         return s;
+      }
+      else
+      {
+         fputs("Error reallocating memory, freeing q", stderr);
+         free(q);
+         return NULL;
+      }
+   }
+   else if (index == -1 || index == eols + 1)
+   {
+      // append to existing buffer
+      if (index == -1)
+      {
+         memcpy (q + init_len, line, strlen(line) - 1);
+         q[init_len + strlen(line) - 1] = '\0';
+         offset = 0;
+      }
+      else
+      {
+         memcpy (q + init_len + 1, line, strlen(line) - 1);
+         // add last \n
+         memset (q + init_len, '\n', 1);
+         q[init_len + strlen(line)] = '\0';
+         offset = 1;
+      }
+      // reallocate with the last size
+      s = (char*) realloc ((char *) q, init_len + strlen(line) + offset);
+      if (s)
+      {
+         s[init_len + strlen(line) + offset - 1] = '\0';
+         return s;
+      }
+      else
+      {
+         // then q needs to be free'd
+         fputs("Error reallocating memory, freeing q", stderr);
+         free(q);
+         return NULL;
+      }
+   }
+   else
+   {
+      // loop through the string and identify where to start inserting
+      for (i=0; i<strlen(q); ++i)
+      {
+         if (q[i] == '\n')
+         {
+            if (eol_cnt == index - 1)
+            {
+               // move remaining characters further away
+               memmove (q + i + 1 + strlen(line),
+                        q + i + 1,
+                        init_len - i - 1);
+
+               // insert our line
+               memcpy (q + i + 1, line, strlen(line));
+
+               // realloc with the last size
+               s = (char*) realloc ((char *) q, init_len + strlen(line) + 1);
+               if (s)
+               {
+                  s[strlen(line) + init_len] = '\0';
+                  return s;
+               }
+               else
+               {
+                  // then q needs to be free'd
+                  fputs("Error reallocating memory, freeing q", stderr);
+                  free(q);
+                  return NULL;
+               }	
+            }
+            ++eol_cnt;
+         }
+      }
+   }
+   return NULL;
+}
+
 void help()
 {
    printf("USAGE: ./process-file [args]\n");
@@ -20,6 +183,7 @@ void help()
    printf("-f file\t\tRead from file\n");
    printf("-g nbyte\tObtain byte value at position \"nbyte\" ( >0 )\n");
    printf("-h\t\tShow help\n");
+   printf("-i\t\tIf -f was selected, insert a sentence at a given line (interactively)\n");
    printf("-s nbyte:value  Set \"value\" in position \"nbyte\" (\"nbyte\" >0)\n");
    printf("-v\t\tShow version\n");
 }
@@ -71,7 +235,8 @@ u8_t get_byte_value(const char* fname, int pos)
       if (pos > size)
       {
          fprintf(stderr,
-                 "Tried to access out-of-bounds byte position (file size is %lu)\n", size);
+                 "Tried to access out-of-bounds byte position (file size is %lu)\n"
+                 , size);
          return -1;
       }
       fseek(fp, pos, SEEK_SET);
@@ -103,7 +268,8 @@ int set_byte_value(const char* fname, int pos, u8_t val)
       if (pos > size)
       {
          fprintf(stderr,
-                 "Tried to access out-of-bounds byte position (file size is %lu)\n", size);
+                 "Tried to access out-of-bounds byte position (file size is %lu)\n"
+                 , size);
          return -1;
       }
       fseek(fp, pos, SEEK_SET);
@@ -136,13 +302,19 @@ int dump(const char* fname, int mark)
    FILE *fp = fopen(fname, "rb");
    long size;
    int i, start = 0, end = 0;
-   u8_t *buffer;
+   u8_t *buffer, *buffer_cpy;
    if (fp != NULL)
    {
       fseek(fp, 0, SEEK_END);
       size = ftell(fp);
       rewind(fp);
-      buffer = (u8_t*)malloc(sizeof(u8_t) * size);
+      buffer = (u8_t*) malloc((sizeof *buffer) * size);
+      printf("Buffer ptr is now : %llu\n", buffer);
+      buffer_cpy = buffer;
+      printf("which is the same as : %llu\n", buffer_cpy);
+      /* free(buffer); */
+      /* fclose(fp); */
+      /* exit(0); */
       size_t result = fread(buffer, 1, size, fp);
       if (size == result)
       {
@@ -169,11 +341,16 @@ int dump(const char* fname, int mark)
          }
          else
             printf("\n");
+         
       }
       else
       {
-         fprintf(stderr, "Expected and obtained sizes don't match(%lu != %lu)\n"
+         fprintf(stderr
+                 , "Expected and obtained sizes don't match(%lu != %lu)\n"
                  , size, result);
+
+         //free(buffer);
+         fclose(fp);
          return -1;
       }
    }
@@ -181,15 +358,21 @@ int dump(const char* fname, int mark)
    {
       return -1;
    }
+
+   //free allocated resources
+   free(buffer);
+   fclose(fp);
+   return 0;
 }
 
 int main(int argc, char* argv[])
 {
-   char *file = (char*)malloc(200);
+   char file[100];
    char *arg;
    int c, bn = -1, pos=-1, val=-1;
+   int sentence = -1, from_file = -1;
 
-   while ((c = getopt(argc, argv, "df:g:s:hv")) != -1)
+   while ((c = getopt(argc, argv, "df:g:s:hiv")) != -1)
    {
       switch(c)
       {
@@ -197,13 +380,15 @@ int main(int argc, char* argv[])
             debug=1;
             break;
          case 'f':
-            file = optarg;
+            from_file = 1;
+            strcpy(file, optarg);
             break;
          case 'g':
             if (pos >= 0)
             {
-               fprintf(stderr, "You either set or get stuff. Don't do both\n");
-               help();
+               fprintf(stderr
+                       , "You either set or get stuff. Don't do both\n");
+               help();;
                return -1;
             }
             bn = atoi(optarg);
@@ -218,24 +403,29 @@ int main(int argc, char* argv[])
             help();
             return 0;
             break;
+      case 'i':
+         sentence = 1;
+         break;
          case 's':
             if (bn >= 0)
             {
-               fprintf(stderr, "You either set or get stuff. Don't do both\n");
+               fprintf(stderr
+                       , "You either set or get stuff. Don't do both\n");
                help();
                return -1;
             }
             arg = optarg;
             char *cl = strstr(arg, ":");
             char *p,*v;
-            p=malloc(100);
-            v=malloc(100);
+            p = (char*) malloc((sizeof *p) * 100);
+            v = (char*) malloc((sizeof *v) * 100);
             if (cl != NULL)
             {
                //last check
                if (cl-arg == 0 || arg[strlen(arg)-1] == ':')
                {
-                  fprintf(stderr, "Wrong format. Format must be position:value\n");
+                  fprintf(stderr
+                          , "Wrong format. Format must be position:value\n");
                   help();
                   return -1;
                }
@@ -245,7 +435,8 @@ int main(int argc, char* argv[])
                val = atoi(v);
                if (pos < 0)
                {
-                  fprintf(stderr, "Invalid byte number: %d\n", pos);
+                  fprintf(stderr
+                          , "Invalid byte number: %d\n", pos);
                   help();
                   return -1;
                }
@@ -254,7 +445,8 @@ int main(int argc, char* argv[])
             }
             else
             {
-               fprintf(stderr, "Wrong format. Format must be position:value\n");
+               fprintf(stderr
+                       , "Wrong format. Format must be position:value\n");
                help();
                return -1;
             }
@@ -268,8 +460,8 @@ int main(int argc, char* argv[])
             return -1;
       }
    }
-
-   if (strlen(file) == 0)
+   
+   if (from_file == -1)
    {
       memcpy(file, "testfile.txt", 13);
       file[12] = '\0';
@@ -281,8 +473,9 @@ int main(int argc, char* argv[])
    if (bn >= 0)
    {
       dump(file, bn);
-	  if (debug)
-			printf("The byte value at position %d is: %x\n", bn, get_byte_value(file, bn));
+      if (debug)
+         printf("The byte value at position %d is: %x\n"
+                , bn, get_byte_value(file, bn));
       return 0;
    }
    else if (pos >= 0)
@@ -294,16 +487,72 @@ int main(int argc, char* argv[])
       }
       else
       {
-         fprintf(stderr, "Error setting byt value\n");
+         fprintf(stderr, "Error setting byte value\n");
          return -1;
       }
+   }
+   else if (sentence == 1)
+   {
+      char *line = NULL;
+      size_t size;
+   
+      printf("Enter a sentence (hit Enter to finish): ");
+      if (getline (&line, &size, stdin) == -1)
+      {
+         fprintf(stderr, "Error parsing line\n");
+         return 1;
+      }
+      
+      FILE *fp = fopen(file, "r");
+      if (fp == NULL)
+      {
+         perror("Error opening");
+         free(line);
+         return 1;
+      }
+      fseek(fp, 0 , SEEK_END);
+      long lsize = ftell(fp);
+      rewind(fp);
+      
+      //read
+      char *buffer = (char*) malloc ((sizeof *buffer) * lsize);
+      long n = fread(buffer, 1, lsize, fp);
+      if (n != lsize)
+      {
+         perror ("Reading error");
+         free(buffer);
+         free(line);
+         return 1;
+      }
+      printf("Got %zu bytes from file\n", n);
+      
+      //reopen file with write permissions
+      FILE *fpn = freopen(file, "w", fp);
+      if (fpn == NULL)
+      {
+         perror("Error reopening");
+         free(buffer);
+         free(line);
+         return 1;
+      }
+      char *s = insert (buffer, line);
+      size_t nb = fwrite (s, 1, strlen(s), fpn);
+      printf("Wrote %zu bytes to \"%s\"\n", nb, file);
+      
+      // print highlighted line in text
+      print(s, line);
+
+      // free resources
+      fclose(fpn);
+      free(buffer);
+      free(line);
+      free(s);
    }
    else
    {
       //Otherwise just dump file
       dump(file, -1);
    }
-
 
    return 0;
 }
