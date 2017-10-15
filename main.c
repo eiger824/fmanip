@@ -5,6 +5,8 @@
 #include <math.h>
 #include <sys/ioctl.h>
 
+#include "strops.h"
+
 #define NORM "\x1B[0m"
 #define MARK "\x1B[31m"
 
@@ -54,130 +56,9 @@ void print(char *p, char *line)
    }
 }
 
-char* insert(char *p, char *line)
-{
-   char *buffer = p;
-   size_t init_len = strlen(p);
-   unsigned eol_cnt = 1;
-   int i, eols, index = -2;
-   char *q = NULL, *s = NULL;
-   unsigned offset;
-   
-   // find number of lines
-   for (eols = 1; buffer[eols]; buffer[eols] == '\n' ? ++eols : *buffer++);
-   buffer = p;
-   // ask position to insert
-   do
-   {
-      if (index != -2)
-      {
-         fprintf(stderr, "Wrong index '%d'\n", index);
-      }
-      printf("Provide a line where your sentence should be inserted\n");
-      printf("(Accepted values between %d and %d, -1 to append): ", 1, eols + 1);
-      scanf("%d", &index);
-   }
-   while ((index != -1 && index < 0) || index > eols+1);
-
-   // copy the input buffer to q
-   q = (char*) malloc ((sizeof *q) * 1000000);
-   memcpy(q, buffer, init_len + 1);
-   q[init_len] = '\0';
-     
-   // special cases, just prepend/append
-   if (index == 1)
-   {
-      // preprend to existing buffer
-      memmove (q + strlen(line), q, init_len + 1); // +1 accounts for the \0
-      memcpy (q, line, strlen(line));
-      // and realloc with the last size
-      s = (char*) realloc ((char *) q, strlen(line) + init_len + 1);
-      if (s)
-      {
-         s[strlen(line) + init_len] = '\0';
-         return s;
-      }
-      else
-      {
-         fputs("Error reallocating memory, freeing q", stderr);
-         free(q);
-         return NULL;
-      }
-   }
-   else if (index == -1 || index == eols + 1)
-   {
-      // append to existing buffer
-      if (index == -1)
-      {
-         memcpy (q + init_len, line, strlen(line) - 1);
-         q[init_len + strlen(line) - 1] = '\0';
-         offset = 0;
-      }
-      else
-      {
-         memcpy (q + init_len + 1, line, strlen(line) - 1);
-         // add last \n
-         memset (q + init_len, '\n', 1);
-         q[init_len + strlen(line)] = '\0';
-         offset = 1;
-      }
-      // reallocate with the last size
-      s = (char*) realloc ((char *) q, init_len + strlen(line) + offset);
-      if (s)
-      {
-         s[init_len + strlen(line) + offset - 1] = '\0';
-         return s;
-      }
-      else
-      {
-         // then q needs to be free'd
-         fputs("Error reallocating memory, freeing q", stderr);
-         free(q);
-         return NULL;
-      }
-   }
-   else
-   {
-      // loop through the string and identify where to start inserting
-      for (i=0; i<strlen(q); ++i)
-      {
-         if (q[i] == '\n')
-         {
-            if (eol_cnt == index - 1)
-            {
-               // move remaining characters further away
-               memmove (q + i + 1 + strlen(line),
-                        q + i + 1,
-                        init_len - i - 1);
-
-               // insert our line
-               memcpy (q + i + 1, line, strlen(line));
-
-               // realloc with the last size
-               s = (char*) realloc ((char *) q, init_len + strlen(line) + 1);
-               if (s)
-               {
-                  s[strlen(line) + init_len] = '\0';
-                  return s;
-               }
-               else
-               {
-                  // then q needs to be free'd
-                  fputs("Error reallocating memory, freeing q", stderr);
-                  free(q);
-                  return NULL;
-               }	
-            }
-            ++eol_cnt;
-         }
-      }
-   }
-   return NULL;
-}
-
 void help()
 {
-   printf("USAGE: ./process-file [args]\n");
+   printf("USAGE: ./process-file [dh[g|s]v] f [i]\n");
    printf("[args]\n");
    printf("-d\t\tTurn on debug mode\n");
    printf("-f file\t\tRead from file\n");
@@ -309,12 +190,8 @@ int dump(const char* fname, int mark)
       size = ftell(fp);
       rewind(fp);
       buffer = (u8_t*) malloc((sizeof *buffer) * size);
-      printf("Buffer ptr is now : %llu\n", buffer);
       buffer_cpy = buffer;
-      printf("which is the same as : %llu\n", buffer_cpy);
-      /* free(buffer); */
-      /* fclose(fp); */
-      /* exit(0); */
+
       size_t result = fread(buffer, 1, size, fp);
       if (size == result)
       {
@@ -463,8 +340,8 @@ int main(int argc, char* argv[])
    
    if (from_file == -1)
    {
-      memcpy(file, "testfile.txt", 13);
-      file[12] = '\0';
+		fputs("Provide at least one file name\n", stderr);
+		return 1;
    }
 
    if (debug)
@@ -515,8 +392,9 @@ int main(int argc, char* argv[])
       rewind(fp);
       
       //read
-      char *buffer = (char*) malloc ((sizeof *buffer) * lsize);
+      char *buffer = (char*) malloc ((sizeof *buffer) * (lsize + 1));
       long n = fread(buffer, 1, lsize, fp);
+      buffer[lsize] = '\0';
       if (n != lsize)
       {
          perror ("Reading error");
@@ -535,13 +413,31 @@ int main(int argc, char* argv[])
          free(line);
          return 1;
       }
-      char *s = insert (buffer, line);
-      size_t nb = fwrite (s, 1, strlen(s), fpn);
+
+      unsigned nolines = strnrchr(buffer, '\n');
+      int linr = -10;
+      // ask position to insert
+      //do
+      while ( (linr != -1 && linr <= 0) || (linr > nolines + 1) )
+      {
+         printf("Provide a line where your sentence should be inserted\n");
+         printf("(Accepted values between %d and %d): ", 1, nolines + 1);
+         scanf(" %d", &linr);
+            
+         if (linr < 0 || linr > nolines + 1)
+         {
+            fprintf(stderr, "Wrong index '%d'\n", linr);
+         }
+      }
+      // Allocate big buffer
+      char *s = (char*) malloc( (sizeof *s) * ( n + strlen(line) + 1 ) );
+      
+      // Insert our line into the buffer
+      int res = strinsrt (s, buffer, strlen(buffer), line, linr);
+	  
+      size_t nb = fwrite (s, 1, res, fpn);
       printf("Wrote %zu bytes to \"%s\"\n", nb, file);
       
-      // print highlighted line in text
-      print(s, line);
-
       // free resources
       fclose(fpn);
       free(buffer);
