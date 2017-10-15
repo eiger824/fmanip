@@ -14,48 +14,6 @@ typedef unsigned char u8_t;
 
 int debug = 0;
 
-void print(char *p, char *line)
-{
-   if (line == NULL)
-   {
-      printf("Text (length=%zu)\n---------------\n", strlen(p));
-      printf("%s\n---------------\n", p);
-   }
-   else
-   {
-      char *substr = (char*) malloc((sizeof *substr) * 1000);
-      memcpy(substr, line, strlen(line));
-      substr[strlen(line) - 1] = '\0';
-      
-      char *s = strstr(p, substr);
-      if (s != NULL)
-      {
-         int where = s - p;
-         printf("New text, length:%zu (%zu + %zu)\n",
-                strlen(p), strlen(p) - strlen(line), strlen(line));
-         printf("------------------------------\n");
-         for (unsigned i=0; i<strlen(p); ++i)
-         {
-            if (i == where) printf("%s", MARK);
-            if (i == where + strlen(line)) printf("%s", NORM);
-            printf("%c", p[i]);
-         }
-         //ensure to get back to normal color
-         printf("%s", NORM);
-         printf("\n------------------------------\n");
-      }
-      else
-      {
-         printf("New text, length=%zu (%zu + %zu)\n",
-                strlen(p), strlen(p) - strlen(line), strlen(line));
-         printf("------------------------------\n%s\n", p);
-         printf("------------------------------\n");
-      }
-
-      free(substr);
-   }
-}
-
 void help()
 {
    printf("USAGE: ./process-file [dh[g|s]v] f [i]\n");
@@ -63,6 +21,7 @@ void help()
    printf("-d\t\tTurn on debug mode\n");
    printf("-f file\t\tRead from file\n");
    printf("-g nbyte\tObtain byte value at position \"nbyte\" ( >0 )\n");
+   printf("-G value\tPrint all bytes matching \"value\"\n");
    printf("-h\t\tShow help\n");
    printf("-i\t\tIf -f was selected, insert a sentence at a given line (interactively)\n");
    printf("-s nbyte:value  Set \"value\" in position \"nbyte\" (\"nbyte\" >0)\n");
@@ -176,21 +135,20 @@ int set_byte_value(const char* fname, int pos, u8_t val)
    }
 }
 
-int dump(const char* fname, int mark)
+int dump(const char* fname, int mark, int byteval)
 {
    int width = get_win_width();
    if (width > 100) width = 100;
    FILE *fp = fopen(fname, "rb");
    long size;
    int i, start = 0, end = 0;
-   u8_t *buffer, *buffer_cpy;
+   u8_t *buffer; 
    if (fp != NULL)
    {
       fseek(fp, 0, SEEK_END);
       size = ftell(fp);
       rewind(fp);
       buffer = (u8_t*) malloc((sizeof *buffer) * size);
-      buffer_cpy = buffer;
 
       size_t result = fread(buffer, 1, size, fp);
       if (size == result)
@@ -204,10 +162,10 @@ int dump(const char* fname, int mark)
                start = end+1;
             }
             printf("%s%s%x%s "
-                   ,(i==mark)?MARK:""
+                   ,(i==mark || buffer[i] == byteval)?MARK:""
                    ,(buffer[i]<16)?"0":""
                    ,buffer[i]
-                   ,(i==mark)?NORM:"");
+                   ,(i==mark || buffer[i] == byteval)?NORM:"");
 
          }
          if (i % (width/3-7) != 0)
@@ -246,102 +204,119 @@ int main(int argc, char* argv[])
 {
    char file[100];
    char *arg;
-   int c, bn = -1, pos=-1, val=-1;
+   int c, bn = -1, pos=-1, val=-1, byteval=-1;
    int sentence = -1, from_file = -1;
 
-   while ((c = getopt(argc, argv, "df:g:s:hiv")) != -1)
+   while ((c = getopt(argc, argv, "df:g:G:s:hiv")) != -1)
    {
       switch(c)
       {
-         case 'd':
-            debug=1;
-            break;
-         case 'f':
-            from_file = 1;
-            strcpy(file, optarg);
-            break;
-         case 'g':
-            if (pos >= 0)
-            {
-               fprintf(stderr
-                       , "You either set or get stuff. Don't do both\n");
-               help();;
-               return -1;
-            }
-            bn = atoi(optarg);
-            if (bn < 0)
-            {
-               fprintf(stderr, "Invalid byte number (<0)\n");
-               help();
-               return -1;
-            }
-            break;
-         case 'h':
+      case 'd':
+         debug=1;
+         break;
+      case 'f':
+         from_file = 1;
+         strcpy(file, optarg);
+         break;
+      case 'g':
+         if (pos >= 0)
+         {
+            fprintf(stderr
+                    , "You either set or get stuff. Don't do both\n");
+            help();;
+            return -1;
+         }
+         bn = atoi(optarg);
+         if (bn < 0)
+         {
+            fprintf(stderr, "Invalid byte number (<0)\n");
             help();
-            return 0;
-            break;
+            return -1;
+         }
+         break;
+      case 'G':
+         if (pos >= 0)
+         {
+            fprintf(stderr
+                    , "You either set of get stuff. Don't do both\n");
+            help();
+            return -1;
+         }
+         byteval = atoi(optarg);
+         printf("Parsed val: %d\n", byteval);
+         if (byteval < 0 || byteval > 255)
+         {
+            fprintf(stderr, "Invalid byte value. Must be between 0 and 255\n");
+            help();
+            return -1;
+         }
+         break;
+      case 'h':
+         help();
+         return 0;
+         break;
       case 'i':
          sentence = 1;
          break;
-         case 's':
-            if (bn >= 0)
-            {
-               fprintf(stderr
-                       , "You either set or get stuff. Don't do both\n");
-               help();
-               return -1;
-            }
-            arg = optarg;
-            char *cl = strstr(arg, ":");
-            char *p,*v;
-            p = (char*) malloc((sizeof *p) * 100);
-            v = (char*) malloc((sizeof *v) * 100);
-            if (cl != NULL)
-            {
-               //last check
-               if (cl-arg == 0 || arg[strlen(arg)-1] == ':')
-               {
-                  fprintf(stderr
-                          , "Wrong format. Format must be position:value\n");
-                  help();
-                  return -1;
-               }
-               memcpy(p, arg, cl-arg);
-               memcpy(v, arg+(cl-arg+1),strlen(arg)-(cl-arg)-1);
-               pos = atoi(p);
-               val = atoi(v);
-               if (pos < 0)
-               {
-                  fprintf(stderr
-                          , "Invalid byte number: %d\n", pos);
-                  help();
-                  return -1;
-               }
-               free(p);
-               free(v);
-            }
-            else
+      case 's':
+         if (bn >= 0)
+         {
+            fprintf(stderr
+                    , "You either set or get stuff. Don't do both\n");
+            help();
+            return -1;
+         }
+         arg = optarg;
+         char *cl = strstr(arg, ":");
+         char *p,*v;
+         p = (char*) malloc((sizeof *p) * 100);
+         v = (char*) malloc((sizeof *v) * 100);
+         if (cl != NULL)
+         {
+            //last check
+            if (cl-arg == 0 || arg[strlen(arg)-1] == ':')
             {
                fprintf(stderr
                        , "Wrong format. Format must be position:value\n");
                help();
                return -1;
             }
-            break;
-         case 'v':
-            version();
-            return 0;
-            break;
-         default:
+            memcpy(p, arg, cl-arg);
+            memcpy(v, arg+(cl-arg+1),strlen(arg)-(cl-arg)-1);
+            pos = atoi(p);
+            val = atoi(v);
+            if (pos < 0)
+            {
+               fprintf(stderr
+                       , "Invalid byte number: %d\n", pos);
+               help();
+               return -1;
+            }
+            free(p);
+            free(v);
+         }
+         else
+         {
+            fprintf(stderr
+                    , "Wrong format. Format must be position:value\n");
             help();
             return -1;
+         }
+         break;
+      case 'v':
+         version();
+         return 0;
+         break;
+      default:
+         help();
+         return -1;
       }
    }
    
    if (from_file == -1)
    {
-		fputs("Provide at least one file name\n", stderr);
-		return 1;
+      fputs("Provide at least one file name\n", stderr);
+      return 1;
    }
 
    if (debug)
@@ -349,7 +324,7 @@ int main(int argc, char* argv[])
 
    if (bn >= 0)
    {
-      dump(file, bn);
+      dump(file, bn, -1);
       if (debug)
          printf("The byte value at position %d is: %x\n"
                 , bn, get_byte_value(file, bn));
@@ -359,7 +334,7 @@ int main(int argc, char* argv[])
    {
       if (set_byte_value(file, pos, val) == 0)
       {
-         dump(file, pos);
+         dump(file, pos, -1);
          return 0;
       }
       else
@@ -444,10 +419,14 @@ int main(int argc, char* argv[])
       free(line);
       free(s);
    }
+   else if (byteval != -1)
+   {
+      dump(file, -1, byteval);
+   }
    else
    {
       //Otherwise just dump file
-      dump(file, -1);
+      dump(file, -1, -1);
    }
 
    return 0;
