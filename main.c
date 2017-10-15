@@ -22,6 +22,7 @@ void help()
    printf("-f file\t\tRead from file\n");
    printf("-g nbyte\tObtain byte value at position \"nbyte\" ( >0 )\n");
    printf("-G value\tPrint all bytes matching \"value\"\n");
+   printf("        \t(For \\0, just input 00 as argument)\n");
    printf("-h\t\tShow help\n");
    printf("-i\t\tIf -f was selected, insert a sentence at a given line (interactively)\n");
    printf("-s nbyte:value  Set \"value\" in position \"nbyte\" (\"nbyte\" >0)\n");
@@ -93,7 +94,7 @@ u8_t get_byte_value(const char* fname, int pos)
 
 int set_byte_value(const char* fname, int pos, u8_t val)
 {
-   if (pos < 1) return -1;
+   if (pos < 0) return -1;
    if (val > 255) return -2;
    printf("Setting %x to pos %d\n", val, pos);
    FILE *fp = fopen(fname, "r+b");
@@ -148,6 +149,16 @@ int dump(const char* fname, int mark, int byteval)
       fseek(fp, 0, SEEK_END);
       size = ftell(fp);
       rewind(fp);
+      
+      //last check: mark is bigger than file size
+      if (mark > size)
+      {
+         fprintf(stderr
+                 , "Error: input byte position (%d) is greater than size of file (%zu)\n"
+                 , mark, size);
+         fclose(fp);
+         return -1;
+      }
       buffer = (u8_t*) malloc((sizeof *buffer) * size);
 
       size_t result = fread(buffer, 1, size, fp);
@@ -157,7 +168,7 @@ int dump(const char* fname, int mark, int byteval)
          {
             if (i > 0 && i % (width/3 - 7) == 0)
             {
-               end = i;
+               end = i-1;
                printf(" (bytes %d - %d)\n", start, end);
                start = end+1;
             }
@@ -204,7 +215,7 @@ int main(int argc, char* argv[])
 {
    char file[100];
    char *arg;
-   int c, bn = -1, pos=-1, val=-1, byteval=-1;
+   int c, bn = -1, pos=-1, val=-1, byteval=-1, err=-1;
    int sentence = -1, from_file = -1;
 
    while ((c = getopt(argc, argv, "df:g:G:s:hiv")) != -1)
@@ -223,13 +234,13 @@ int main(int argc, char* argv[])
          {
             fprintf(stderr
                     , "You either set or get stuff. Don't do both\n");
-            help();;
+            help();
             return -1;
          }
          bn = atoi(optarg);
-         if (bn < 0)
+         if (bn == 0 && strlen(optarg) > 1)
          {
-            fprintf(stderr, "Invalid byte number (<0)\n");
+            fprintf(stderr, "Invalid byte number \"%s\"\n", optarg);
             help();
             return -1;
          }
@@ -242,14 +253,32 @@ int main(int argc, char* argv[])
             help();
             return -1;
          }
-         byteval = atoi(optarg);
-         printf("Parsed val: %d\n", byteval);
+         //check if input was given as a simple char or an integer
+         if (strlen(optarg) == 1 && (optarg[0] > 32 && optarg[0] < 127))
+         {
+            byteval = optarg[0];
+         }
+         else
+         {
+            byteval = atoi(optarg);
+         }
+         //check validity
          if (byteval < 0 || byteval > 255)
          {
             fprintf(stderr, "Invalid byte value. Must be between 0 and 255\n");
             help();
             return -1;
          }
+         
+         if (byteval > 32)
+         {
+            printf("Looking for occurrences of '%c'\n", byteval);
+         }
+         else
+         {
+            printf("Looking for occurrences of '\\%d'\n", byteval);
+         }
+         
          break;
       case 'h':
          help();
@@ -322,20 +351,20 @@ int main(int argc, char* argv[])
    if (debug)
       printf("Attempting to read from \"%s\"\n", file);
 
-   if (bn >= 0)
+   if (bn != -1)
    {
-      dump(file, bn, -1);
+      err = dump(file, bn, -1);
       if (debug)
          printf("The byte value at position %d is: %x\n"
                 , bn, get_byte_value(file, bn));
-      return 0;
+      return err;
    }
    else if (pos >= 0)
    {
       if (set_byte_value(file, pos, val) == 0)
       {
-         dump(file, pos, -1);
-         return 0;
+         err = dump(file, pos, -1);
+         return err;
       }
       else
       {
@@ -418,16 +447,15 @@ int main(int argc, char* argv[])
       free(buffer);
       free(line);
       free(s);
+      
+      // update error code
+      err = (nb > 0) ? 0 : 1;
    }
    else if (byteval != -1)
    {
-      dump(file, -1, byteval);
+      err = dump(file, -1, byteval);
    }
-   else
-   {
-      //Otherwise just dump file
-      dump(file, -1, -1);
-   }
+   
 
-   return 0;
+   return err;
 }
