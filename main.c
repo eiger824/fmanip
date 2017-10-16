@@ -16,17 +16,19 @@ int debug = 0;
 
 void help()
 {
-   printf("USAGE: ./process-file [dh[g|s]v] f [i]\n");
+   printf("USAGE: fmanip [dh[G|g|s]v] f [i]\n");
    printf("[args]\n");
-   printf("-d\t\tTurn on debug mode\n");
-   printf("-f file\t\tRead from file\n");
-   printf("-g nbyte\tObtain byte value at position \"nbyte\" ( >0 )\n");
-   printf("-G value\tPrint all bytes matching \"value\"\n");
-   printf("        \t(For \\0, just input 00 as argument)\n");
-   printf("-h\t\tShow help\n");
-   printf("-i\t\tIf -f was selected, insert a sentence at a given line (interactively)\n");
-   printf("-s nbyte:value  Set \"value\" in position \"nbyte\" (\"nbyte\" >0)\n");
-   printf("-v\t\tShow version\n");
+   printf("-d\t\t\tTurn on debug mode\n");
+   printf("-f file\t\t\tRead from file\n");
+   printf("-g nbyte\t\tObtain byte value at position \"nbyte\" ( >0 )\n");
+   printf("-G value\t\tPrint all bytes matching \"value\"\n");
+   printf("        \t\t(For \\0, just input 00 as argument)\n");
+   printf("-h\t\t\tShow help\n");
+   printf("-i\t\t\tIf -f was selected, insert a sentence at a given line\n");
+   printf("\t\t\t(interactively)\n");
+   printf("-s nbyte[-nbyte2]:value Set \"value\" in position \"nbyte\" or\n");
+   printf("\t\t\tbetween range \"nbyte\" - \"nbyte2\" (\"nbyte*\" >0)\n");
+   printf("-v\t\t\tShow version\n");
 }
 
 void version()
@@ -92,11 +94,10 @@ u8_t get_byte_value(const char* fname, int pos)
    }
 }
 
-int set_byte_value(const char* fname, int pos, u8_t val)
+int set_byte_value(const char* fname, int pos, int to, u8_t val)
 {
    if (pos < 0) return -1;
    if (val > 255) return -2;
-   printf("Setting %x to pos %d\n", val, pos);
    FILE *fp = fopen(fname, "r+b");
    if (fp != NULL)
    {
@@ -113,22 +114,53 @@ int set_byte_value(const char* fname, int pos, u8_t val)
                  , size);
          return -1;
       }
-      fseek(fp, pos, SEEK_SET);
-
-      int r;
-      if ((r = fwrite(&val, 1, 1, fp)) > 0)
+      if (to != -1)
       {
-         printf("Success! Set the value %d at position %d\n", val, pos);
-         fclose(fp);
-         return 0;
+         int performance = 0;
+         for (int n = pos; n<to+1; ++n)
+         {
+            fseek(fp, n, SEEK_SET);
+
+            int r;
+            if ((r = fwrite(&val, 1, 1, fp)) > 0)
+            {
+               ++performance;               
+            }
+         }
+         //last check
+         if (performance == to-pos+1)
+         {
+            printf("Success! %.2f%% of the specified positions were changed!\n"
+                   , (float)((performance / (to-pos+1) * 100)));
+            fclose(fp);
+            return 0;
+         }
+         else
+         {
+            fprintf(stderr,
+                    "Error: %.2f%% of the specified positions were changed\n"
+                    , (float)((performance / (to-pos+1) * 100)));
+            fclose(fp);
+            return -1;
+         }
       }
       else
       {
-         fprintf(stderr,"Error writing\n");
-         fclose(fp);
-         return -1;
+         fseek(fp, pos, SEEK_SET);
+         int r;
+         if ((r = fwrite(&val, 1, 1, fp)) > 0)
+         {
+            printf("Success! Set the value %d at position %d\n", val, pos);
+            fclose(fp);
+            return 0;
+         }
+         else
+         {
+            fprintf(stderr,"Error writing\n");
+            fclose(fp);
+            return -1;
+         } 
       }
-
    }
    else
    {
@@ -136,14 +168,15 @@ int set_byte_value(const char* fname, int pos, u8_t val)
    }
 }
 
-int dump(const char* fname, int mark, int byteval)
+int dump(const char* fname, int mark, int range, int byteval)
 {
    int width = get_win_width();
    if (width > 100) width = 100;
    FILE *fp = fopen(fname, "rb");
    long size;
    int i, start = 0, end = 0;
-   u8_t *buffer; 
+   u8_t *buffer;
+   char color[10];
    if (fp != NULL)
    {
       fseek(fp, 0, SEEK_END);
@@ -169,21 +202,37 @@ int dump(const char* fname, int mark, int byteval)
             if (i > 0 && i % (width/3 - 7) == 0)
             {
                end = i-1;
+               printf("%s", NORM);
                printf(" (bytes %d - %d)\n", start, end);
+               printf("%s", color);
                start = end+1;
             }
-            printf("%s%s%x%s "
-                   ,(i==mark || buffer[i] == byteval)?MARK:""
-                   ,(buffer[i]<16)?"0":""
-                   ,buffer[i]
-                   ,(i==mark || buffer[i] == byteval)?NORM:"");
-
+            if (range != -1)
+            {
+               printf("%s%s%x%s "
+                      ,(i==mark || buffer[i] == byteval)?MARK:""
+                      ,(buffer[i]<16)?"0":""
+                      ,buffer[i]
+                      ,(i==mark+range || buffer[i] == byteval)?NORM:"");
+               if (i==mark) strcpy(color, MARK);
+               if (i==mark+range) strcpy(color, NORM);
+            }
+            else
+            {
+               printf("%s%s%x%s "
+                      ,(i==mark || buffer[i] == byteval)?MARK:""
+                      ,(buffer[i]<16)?"0":""
+                      ,buffer[i]
+                      ,(i==mark || buffer[i] == byteval)?NORM:"");
+            }
          }
          if (i % (width/3-7) != 0)
          {
+            printf("%s", NORM);
             for (unsigned k=(i%(width/3-7))*3; k<width - 3*7-1; k++)
                printf(" ");
             printf(" (bytes %d - %lu)\n", start, size);
+            printf("%s", color);
          }
          else
             printf("\n");
@@ -215,8 +264,8 @@ int main(int argc, char* argv[])
 {
    char file[100];
    char *arg;
-   int c, bn = -1, pos=-1, val=-1, byteval=-1, err=-1;
-   int sentence = -1, from_file = -1;
+   int c, bn = -1, pos= -1, to = -1, val = -1, byteval = -1, err = -1;
+   int sentence = -1, from_file = -1, with_range = -1;
 
    while ((c = getopt(argc, argv, "df:g:G:s:hiv")) != -1)
    {
@@ -283,7 +332,6 @@ int main(int argc, char* argv[])
       case 'h':
          help();
          return 0;
-         break;
       case 'i':
          sentence = 1;
          break;
@@ -296,38 +344,119 @@ int main(int argc, char* argv[])
             return -1;
          }
          arg = optarg;
-         char *cl = strstr(arg, ":");
-         char *p,*v;
-         p = (char*) malloc((sizeof *p) * 100);
-         v = (char*) malloc((sizeof *v) * 100);
+         char *p,*p2,*v;
+         char *cl = strchr(arg, ':');
+         
          if (cl != NULL)
          {
-            //last check
+            //check for ':'
             if (cl-arg == 0 || arg[strlen(arg)-1] == ':')
             {
                fprintf(stderr
-                       , "Wrong format. Format must be position:value\n");
+                       , "Wrong format. Format must be position[-range]:value\n");
                help();
                return -1;
             }
-            memcpy(p, arg, cl-arg);
-            memcpy(v, arg+(cl-arg+1),strlen(arg)-(cl-arg)-1);
-            pos = atoi(p);
-            val = atoi(v);
-            if (pos < 0)
+            
+            //check for '-' (opt)
+            char *r = strchr(arg, '-');
+            if (r != NULL)
             {
-               fprintf(stderr
-                       , "Invalid byte number: %d\n", pos);
-               help();
-               return -1;
+               if (r-arg == 0)
+               {
+                  fprintf(stderr
+                         , "Wrong format. Format must be position[-range]:value\n");
+                  help();
+                  return -1; 
+               }
+               else if (cl - r == 1)
+               {
+                  fprintf(stderr
+                          , "Wrong format. Format must be position[-range]:value\n");
+                  help();
+                  return -1;
+               }
+               p = (char*) malloc((sizeof *p) * 100);
+               p2 = (char*) malloc((sizeof *p2) * 100);
+               v = (char*) malloc((sizeof *v) * 100);
+
+               memcpy(p, arg, r-arg);
+               p[r-arg] = '\0';
+               memcpy(p2, arg+(r-arg)+1, (cl-r)-1);
+               p2[(cl-r)-1] = '\0';
+               memcpy(v, cl+1, strlen(arg)-(cl-arg)-1);
+               v[strlen(arg)-(cl-arg)-1] = '\0';
+               
+               pos = atoi(p);
+               to = atoi(p2);
+               val = atoi(v);
+               
+               //last checks
+               if (pos < 0)
+               {
+                  fprintf(stderr
+                          , "Invalid byte number: %d\n", pos);
+                  help();
+                  free(p);
+                  free(p2);
+                  free(v);
+                  return -1;
+               }
+               else if (to < pos)
+               {
+                  fprintf(stderr
+                          , "Error: value of position 1 must be smaller or equal\n");
+                  fprintf(stderr, "than value of position 2\n");
+                  help();
+                  free(p);
+                  free(p2);
+                  free(v);
+                  return -1;
+               }
+               if (val < 0 || val > 255)
+               {
+                  fprintf(stderr
+                          , "Invalid byte value: %d\n", val);
+                  help();
+                  free(p);
+                  free(p2);
+                  free(v);
+                  return -1;
+               }
+               with_range = to - pos;
+
+               free(p);
+               free(p2);
+               free(v);
             }
-            free(p);
-            free(v);
+            else
+            {
+               //no range was specified, single position
+               p = (char*) malloc((sizeof *p) * 100);
+               v = (char*) malloc((sizeof *v) * 100);
+            
+               memcpy(p, arg, cl-arg);
+               memcpy(v, arg+(cl-arg+1),strlen(arg)-(cl-arg)-1);
+            
+               pos = atoi(p);
+               val = atoi(v);
+               if (pos < 0)
+               {
+                  fprintf(stderr
+                          , "Invalid byte number: %d\n", pos);
+                  help();
+                  free(p);
+                  free(v);
+                  return -1;
+               }
+               free(p);
+               free(v);
+            }
          }
          else
          {
             fprintf(stderr
-                    , "Wrong format. Format must be position:value\n");
+                    , "Wrong format. Format must be position[-range]:value\n");
             help();
             return -1;
          }
@@ -335,7 +464,6 @@ int main(int argc, char* argv[])
       case 'v':
          version();
          return 0;
-         break;
       default:
          help();
          return -1;
@@ -353,7 +481,7 @@ int main(int argc, char* argv[])
 
    if (bn != -1)
    {
-      err = dump(file, bn, -1);
+      err = dump(file, bn, with_range, -1);
       if (debug)
          printf("The byte value at position %d is: %x\n"
                 , bn, get_byte_value(file, bn));
@@ -361,9 +489,9 @@ int main(int argc, char* argv[])
    }
    else if (pos >= 0)
    {
-      if (set_byte_value(file, pos, val) == 0)
+      if (set_byte_value(file, pos, to, val) == 0)
       {
-         err = dump(file, pos, -1);
+         err = dump(file, pos, with_range, -1);
          return err;
       }
       else
@@ -453,7 +581,7 @@ int main(int argc, char* argv[])
    }
    else if (byteval != -1)
    {
-      err = dump(file, -1, byteval);
+      err = dump(file, -1, with_range, byteval);
    }
    
 
