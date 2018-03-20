@@ -1,20 +1,24 @@
-PROGRAM=fmanip
+PROGRAM	= fmanip
 
-CC=gcc
+CC		= gcc
 
-LDFLAGS=
-CFLAGS ?=-c -Wall -Wextra -Wpedantic
+LDFLAGS	=
+CFLAGS 	=-c -g -Wall -Wextra -Wpedantic --std=c11
 
-SRC=main.c
+SRC 	= main.c \
+		  files.c
 
-OBJ=main.o
+OBJS 	= main.o \
+		  files.o \
 
+${PROGRAM}: ${OBJS}
+	${CC} ${LDFLAGS} $^ -o $@
 
-${PROGRAM}: ${OBJ}
-	${CC} ${LDFLAGS} ${OBJ} -o $@
+main.o: main.c defs.h
+	${CC} ${CFLAGS} $< -o $@
 
-${OBJ}: ${SRC}
-	${CC} ${CFLAGS} ${SRC} -o $@
+files.o: files.c files.h defs.h
+	${CC} ${CFLAGS} $< -o $@
 
 install:
 	install ${PROGRAM} /usr/bin/
@@ -23,4 +27,4 @@ uninstall:
 	rm -f /usr/bin/fmanip
 
 clean:
-	rm -f ${PROGRAM} ${OBJ} *~
+	rm -f ${PROGRAM} ${OBJS} *~
