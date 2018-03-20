@@ -11,5 +11,7 @@
 
 #define MAX_FNAMES 100
 
+#define PROGRAM_VERSION 0.2
+
 typedef unsigned char u8_t;
 

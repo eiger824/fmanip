@@ -31,7 +31,7 @@ void help()
 
 void version()
 {
-    printf("Version 0.2, by Santiago Pagola\n");
+    printf("Version %f, by Santiago Pagola\n", PROGRAM_VERSION);
 }
 
 int get_win_width()
