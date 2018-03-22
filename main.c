@@ -281,7 +281,7 @@ int main(int argc, char* argv[])
                 memcpy(byte, byteval2, diff);
                 byte[diff] = '\0';
                 int val2 = atoi(byte);
-                subst_bytes("foo", val1, val2);
+                subst_bytes("foo", val1, val2, debug);
                 return 0;
             case 'v':
                 version();
@@ -317,10 +317,7 @@ int main(int argc, char* argv[])
     {
         file = *(files + i);
         if (debug)
-            printf("Will open file:\t%s (%p)\n", *(files + i),(void*) *(files + i));
-
-        if (debug)
-            printf("Attempting to read from \"%s\"\n", file);
+            printf("Will open file:\t%s (%p)\n", file,(void*) file);
 
         if (bn != -1)
         {
@@ -425,6 +422,12 @@ int main(int argc, char* argv[])
         else if (byteval != -1)
         {
             err = dump(file, -1, with_range, byteval);
+        }
+        else if(bn == -1 && pos == -1 && to == -1 && val == -1 && byteval == -1 && err == -1) 
+        {
+            // Just dump ...
+            printf("Dumping...\n");
+            err = dump(file, -1, -1, -1);
         }
 
     }

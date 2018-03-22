@@ -4,18 +4,16 @@
 
 #include "files.h"
 
-void subst_bytes(const char * fname, int val1, int val2)
+void subst_bytes(const char * fname, int val1, int val2, int debug)
 {
     FILE * fp = fopen(fname, "rb");
     size_t size;
     char * buffer;
     if (fp)
     {
-
-        fseek(fp, 0, SEEK_END);
-        size = ftell(fp);
-        rewind(fp);
-
+        size = file_size(fp); 
+        if (debug)
+            printf("(File contains %lu bytes)\n", size);
         buffer = (char * ) malloc (sizeof *buffer * size);
         fread(buffer, 1, size, fp);
 
@@ -32,15 +30,14 @@ void subst_bytes(const char * fname, int val1, int val2)
 
 u8_t get_byte_value(const char* fname, int pos, int debug)
 {
+    size_t size;
     if (pos < 0) return -1;
     FILE *fp = fopen(fname, "rb");
     if (fp != NULL)
     {
-        fseek(fp, 0, SEEK_END);
-        long size = ftell(fp);
+        size = file_size(fp);
         if (debug)
             printf("(File contains %lu bytes)\n", size);
-        rewind (fp);
 
         if (pos > size)
         {
@@ -63,16 +60,15 @@ u8_t get_byte_value(const char* fname, int pos, int debug)
 
 int set_byte_value(const char* fname, int pos, int to, u8_t val, int debug)
 {
+    size_t size;
     if (pos < 0) return -1;
     if (val > 255) return -2;
     FILE *fp = fopen(fname, "r+b");
     if (fp != NULL)
     {
-        fseek(fp, 0, SEEK_END);
-        long size = ftell(fp);
+        size = file_size(fp);
         if (debug)
             printf("(File contains %lu bytes)\n", size);
-        rewind (fp);
 
         if (pos > size)
         {
@@ -140,18 +136,15 @@ int dump(const char* fname, int mark, int range, int byteval)
     int width = get_win_width();
     if (width > 100) width = 100;
     FILE *fp = fopen(fname, "rb");
-    long size;
+    size_t size = 0;
     int i, start = 0, end = 0;
     u8_t *buffer;
     char color[10];
     if (fp != NULL)
     {
-        fseek(fp, 0, SEEK_END);
-        size = ftell(fp);
-        rewind(fp);
-
+        size = file_size(fp);
         //last check: mark is bigger than file size
-        if (mark > size)
+        if (mark != -1 && mark > size)
         {
             fprintf(stderr
                     , "Error: input byte position (%d) is greater than size of file (%zu)\n"
@@ -225,4 +218,14 @@ int dump(const char* fname, int mark, int range, int byteval)
     free(buffer);
     fclose(fp);
     return 0;
+}
+
+size_t file_size (FILE * fp)
+{
+    size_t s;
+    if (!fp) return -1;
+    fseek(fp, 0L, SEEK_END);
+    s = ftell(fp);
+    rewind(fp);
+    return s;
 }
