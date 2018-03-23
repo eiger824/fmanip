@@ -16,7 +16,7 @@
 void subst_bytes(const char * fname, int val1, int val2, int debug);
 u8_t get_byte_value(const char* fname, int pos, int debug);
 int set_byte_value(const char* fname, int pos, int to, u8_t val, int debug);
-int dump(const char* fname, int mark, int range, int byteval);
+int dump(const char* fname, int mark, int range, int byteval, int full_chars);
 size_t file_size (FILE * fp);
 
 #endif /* FILES_H_ */

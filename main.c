@@ -16,6 +16,7 @@ void help()
 {
     printf("USAGE: fmanip [dh[G|g|s]v] f [i]\n");
     printf("[args]\n");
+    printf("-c\t\t\tPrint ASCII chars, not hex repr\n");
     printf("-d\t\t\tTurn on debug mode\n");
     printf("-g nbyte\t\tObtain byte value at position \"nbyte\" ( >0 )\n");
     printf("-G value\t\tPrint all bytes matching \"value\"\n");
@@ -64,15 +65,18 @@ void show_progress(int current, int total)
 int main(int argc, char* argv[])
 {
     char *arg;
-    int c, bn = -1, pos= -1, to = -1, val = -1, byteval = -1, err = -1;
+    int c, bn = -1, pos= -1, to = -1, val = -1, byteval = -1, err = -1, ascii = 0;
     int sentence = -1, with_range = -1;
 
     char **files = (char ** ) malloc (sizeof *files * MAX_FNAMES); // 10 ptrs to MAX_FNAMES fnames
 
-    while ((c = getopt(argc, argv, "dg:G:s:S:hiv")) != -1)
+    while ((c = getopt(argc, argv, "cdg:G:s:S:hiv")) != -1)
     {
         switch(c)
         {
+            case 'c':
+                ascii = 1;
+                break;
             case 'd':
                 debug=1;
                 break;
@@ -321,7 +325,7 @@ int main(int argc, char* argv[])
 
         if (bn != -1)
         {
-            err = dump(file, bn, with_range, -1);
+            err = dump(file, bn, with_range, -1, ascii);
             if (debug)
                 printf("The byte value at position %d is: %x\n"
                         , bn, get_byte_value(file, bn, debug));
@@ -331,7 +335,7 @@ int main(int argc, char* argv[])
         {
             if (set_byte_value(file, pos, to, val, debug) == 0)
             {
-                err = dump(file, pos, with_range, -1);
+                err = dump(file, pos, with_range, -1, ascii);
                 return err;
             }
             else
@@ -421,13 +425,13 @@ int main(int argc, char* argv[])
         }
         else if (byteval != -1)
         {
-            err = dump(file, -1, with_range, byteval);
+            err = dump(file, -1, with_range, byteval, ascii);
         }
         else if(bn == -1 && pos == -1 && to == -1 && val == -1 && byteval == -1 && err == -1) 
         {
             // Just dump ...
             printf("Dumping...\n");
-            err = dump(file, -1, -1, -1);
+            err = dump(file, -1, -1, -1, ascii);
         }
 
     }

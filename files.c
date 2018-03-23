@@ -131,13 +131,14 @@ int set_byte_value(const char* fname, int pos, int to, u8_t val, int debug)
     }
 }
 
-int dump(const char* fname, int mark, int range, int byteval)
+int dump(const char* fname, int mark, int range, int byteval, int full_chars)
 {
     int width = get_win_width();
     if (width > 100) width = 100;
     FILE *fp = fopen(fname, "rb");
     size_t size = 0;
-    int i, start = 0, end = 0;
+    int start = 0, end = 0;
+    int i;
     u8_t *buffer;
     char color[10];
     if (fp != NULL)
@@ -179,11 +180,34 @@ int dump(const char* fname, int mark, int range, int byteval)
                 }
                 else
                 {
-                    printf("%s%s%x%s "
-                            ,(i==mark || buffer[i] == byteval)?MARK:""
-                            ,(buffer[i]<16)?"0":""
-                            ,buffer[i]
-                            ,(i==mark || buffer[i] == byteval)?NORM:"");
+                    if (!full_chars)
+                    {
+                        printf("%s%s%x%s "
+                                ,(i==mark || buffer[i] == byteval)?MARK:""
+                                ,(buffer[i]<16)?"0":""
+                                ,buffer[i]
+                                ,(i==mark || buffer[i] == byteval)?NORM:"");
+                    }
+                    else
+                    {
+                        char current[4];
+                        if (buffer[i] < 32)
+                        {
+                            sprintf(current, "\\%d", buffer[i]);
+                            current[buffer[i] < 10 ? 2 : 3] = '\0';
+                        }
+                        else
+                        {
+                            sprintf(current, "%c", buffer[i]);
+                            current[1] = '\0';
+                        }
+
+                        printf("%s%s%s%s"
+                                ,(i==mark || buffer[i] == byteval)?MARK:""
+                                , current
+                                , (strlen(current) == 3 ? "" : (strlen(current) == 2 ? " " : "  "))
+                                ,(i==mark || buffer[i] == byteval)?NORM:"");
+                    }
                 }
             }
             if (i % (width/3-7) != 0)
