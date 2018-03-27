@@ -13,5 +13,6 @@
 
 int get_win_width();
 void show_progress(int current, int total);
+int argv_to_str(int argc, char * argv[], char * out);
 
 #endif /* UTILS_H_ */

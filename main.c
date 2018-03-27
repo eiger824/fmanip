@@ -5,6 +5,7 @@
 #include <getopt.h>
 
 #include "strops.h"
+#include "utils.h"
 #include "defs.h"
 #include "files.h"
 
@@ -140,7 +141,7 @@ int main(int argc, char* argv[])
                             fprintf(stderr
                                     , "Wrong format. Format must be position[-range]:value\n");
                             help();
-                            return -1; 
+                            return -1;
                         }
                         else if (cl - r == 1)
                         {
@@ -265,6 +266,14 @@ int main(int argc, char* argv[])
                 help();
                 return -1;
         }
+    }
+
+    if (debug)
+    {
+        char out[1000];
+        argv_to_str(argc, argv, out);
+        printf("The following args were provided: '%s'\n",
+                out);
     }
 
     if (optind == argc)
@@ -398,13 +407,13 @@ int main(int argc, char* argv[])
         {
             err = dump(file, -1, with_range, byteval, ascii);
         }
-        else if(bn == -1 && pos == -1 && to == -1 && val == -1 && byteval == -1 && err == -1) 
+        else if(bn == -1 && pos == -1 && to == -1 && val == -1 && byteval == -1)
         {
             // Just dump ...
-            printf("Dumping...\n");
+            if (debug)
+                printf("Dumping '%s'\n", file);
             err = dump(file, -1, -1, -1, ascii);
         }
-
     }
     return err;
 }

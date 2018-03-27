@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
 #include "utils.h"
 #include <unistd.h>
 
@@ -27,4 +30,18 @@ void show_progress(int current, int total)
         printf("-");
     }
     printf("] %.2f%%", (float)current/total * 100);
+}
+
+int argv_to_str(int argc, char * argv[], char * out)
+{
+    if (argv == NULL)
+        return -1;
+    strcpy(out, "");
+    for (int i = 1; i < argc; ++i)
+    {
+        strcat(out, *(argv + i));
+        if (i < argc - 1)
+            strcat(out, " ");
+    }
+    return 0;
 }
